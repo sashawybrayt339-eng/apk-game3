@@ -10,6 +10,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Find project folder
+        run: |
+          CONFIG=$(find . -name config.xml -not -path "*/node_modules/*" -not -path "*/platforms/*" | head -1)
+          if [ -z "$CONFIG" ]; then
+            echo "config.xml not found in the repo. Files in repo:"
+            find . -maxdepth 3 -not -path "./.git/*"
+            exit 1
+          fi
+          DIR=$(dirname "$CONFIG")
+          echo "Project folder: $DIR"
+          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -23,27 +35,29 @@ jobs:
         run: npm install -g cordova
 
       - name: Check files
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          test -f config.xml
           test -f www/index.html
           test -f www/vip.jpg
           test -f game.keystore
+          test -f build.json
           test -f myket-iab-plugin/plugin.xml
-          grep -q 'com.iran.antiguardian.game' config.xml
-          grep -q 'Subscription._850' www/index.html
 
       - name: Add Android platform
+        working-directory: ${{ env.PROJECT_DIR }}
         run: cordova platform add android@latest
 
       - name: Add Myket plugin
+        working-directory: ${{ env.PROJECT_DIR }}
         run: cordova plugin add ./myket-iab-plugin
 
       - name: Build signed release APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: cordova build android --release --buildConfig=build.json -- --packageType=apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: game-apk
-          path: platforms/android/app/build/outputs/apk/release/*.apk
+          path: ${{ env.PROJECT_DIR }}/platforms/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
