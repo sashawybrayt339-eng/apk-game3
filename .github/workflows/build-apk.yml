@@ -1,0 +1,49 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Check files
+        run: |
+          test -f config.xml
+          test -f www/index.html
+          test -f www/vip.jpg
+          test -f game.keystore
+          test -f myket-iab-plugin/plugin.xml
+          grep -q 'com.iran.antiguardian.game' config.xml
+          grep -q 'Subscription._850' www/index.html
+
+      - name: Add Android platform
+        run: cordova platform add android@latest
+
+      - name: Add Myket plugin
+        run: cordova plugin add ./myket-iab-plugin
+
+      - name: Build signed release APK
+        run: cordova build android --release --buildConfig=build.json -- --packageType=apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-apk
+          path: platforms/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
