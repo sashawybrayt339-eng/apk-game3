@@ -1,0 +1,69 @@
+
+name: Build Game APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Extract game ZIP
+        run: |
+          mkdir -p project
+          ZIP=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "No project ZIP found in repository root"
+            exit 1
+          fi
+          unzip -q "$ZIP" -d project
+
+      - name: Find Cordova project
+        run: |
+          CONFIG=$(find project -name config.xml -type f | head -n 1)
+          if [ -z "$CONFIG" ]; then
+            echo "config.xml not found in ZIP"
+            exit 1
+          fi
+          APP_DIR=$(dirname "$CONFIG")
+          if [ ! -d "$APP_DIR/www" ]; then
+            echo "www folder not found beside config.xml"
+            exit 1
+          fi
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+
+      - name: Build Android APK
+        run: |
+          cd "$APP_DIR"
+          npm install -g cordova
+          cordova platform add android
+          cordova build android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-apk
+          path: project/**/platforms/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
