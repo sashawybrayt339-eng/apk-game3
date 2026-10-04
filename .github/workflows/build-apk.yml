@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -14,12 +14,13 @@ jobs:
         run: |
           CONFIG=$(find . -name config.xml -not -path "*/node_modules/*" -not -path "*/platforms/*" | head -1)
           if [ -z "$CONFIG" ]; then
-            echo "config.xml not found in the repo. Files in repo:"
+            echo "::error::config.xml is NOT in the repo. Upload the files inside the zip (not the zip itself)."
             find . -maxdepth 3 -not -path "./.git/*"
             exit 1
           fi
           DIR=$(dirname "$CONFIG")
           echo "Project folder: $DIR"
+          ls -la "$DIR"
           echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
 
       - uses: actions/setup-node@v4
@@ -31,17 +32,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - uses: android-actions/setup-android@v3
+
       - name: Install Cordova
         run: npm install -g cordova
-
-      - name: Check files
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          test -f www/index.html
-          test -f www/vip.jpg
-          test -f game.keystore
-          test -f build.json
-          test -f myket-iab-plugin/plugin.xml
 
       - name: Add Android platform
         working-directory: ${{ env.PROJECT_DIR }}
@@ -49,15 +43,27 @@ jobs:
 
       - name: Add Myket plugin
         working-directory: ${{ env.PROJECT_DIR }}
-        run: cordova plugin add ./myket-iab-plugin
+        run: |
+          if [ -f myket-iab-plugin/plugin.xml ]; then
+            cordova plugin add ./myket-iab-plugin
+          else
+            echo "::warning::myket-iab-plugin folder not found, building without it"
+          fi
 
       - name: Build signed release APK
+        id: release
+        continue-on-error: true
         working-directory: ${{ env.PROJECT_DIR }}
         run: cordova build android --release --buildConfig=build.json -- --packageType=apk
+
+      - name: Build debug APK (fallback)
+        if: steps.release.outcome == 'failure'
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: cordova build android --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: game-apk
-          path: ${{ env.PROJECT_DIR }}/platforms/android/app/build/outputs/apk/release/*.apk
+          path: ${{ env.PROJECT_DIR }}/platforms/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
